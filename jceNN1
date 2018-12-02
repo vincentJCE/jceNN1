@@ -1,0 +1,340 @@
+import numpy as np
+import math
+UP_ZERO = 0.1**6
+BIG_NUMBER = 1000
+SIGMOID_THRESHOLD = 8
+SOFTMAX_THRESHOLD_SMALL = 8
+SOFTMAX_THRESHOLD_LARGE = 12
+class Losses:
+
+    def binary_crossentropy(label, label_hat):
+        while len(np.shape(label_hat)) > 1:
+            label_hat = label_hat[0]
+        for i in range(len(label)):
+            if label_hat[i] < UP_ZERO:
+                label_hat[i] = UP_ZERO
+            if label_hat[i] > 1- UP_ZERO:
+                label_hat[i] = 1 - UP_ZERO
+        result = 0
+        for i in range(len(label)):
+            if label[i] == 1:
+                result -= math.log(label_hat[i])
+            else:
+                result -= math.log(1-label_hat[i])
+        return result
+    
+    def partial_binary_crossentropy(label, label_hat):
+        while len(np.shape(label_hat)) > 1:
+            label_hat = label_hat[0]
+        for i in range(len(label)):
+            if label_hat[i] < UP_ZERO:
+                label_hat[i] = UP_ZERO
+            if label_hat[i] > 1- UP_ZERO:
+                label_hat[i] = 1 - UP_ZERO
+        result = 0
+        for i in range(len(label)):
+            if label[i] == 1:
+                result -= 1/label_hat[i]
+            else:
+                result += 1/(1 - label_hat[i])
+        return result
+    
+    def categorical_crossentropy(label, label_hat):
+        while len(np.shape(label_hat)) > 2:
+            label_hat = label_hat[0]
+        n = np.shape(label)[0]
+        m = np.shape(label)[1]
+        for i in range(n):
+            for j in range(m):
+                if label_hat[i][j] < UP_ZERO:
+                    label_hat[i][j] = UP_ZERO
+        result = 0
+        for i in range(n):
+            for j in range(m):
+                result -= label[i][j] * math.log(label_hat[i][j])
+        print('crossentropy:', label, label_hat, result)
+        return result
+                
+    def partial_categorical_crossentropy( label, label_hat):
+        while len(np.shape(label_hat)) > 2:
+            label_hat = label_hat[0]
+        n = np.shape(label)[0]
+        m = np.shape(label)[1]
+        for i in range(n):
+            for j in range(m):
+                if label_hat[i][j] < UP_ZERO:
+                    label_hat[i][j] = UP_ZERO
+        result = label / label_hat
+        result = -np.sum(result)
+        return result
+    
+    def mse( label, label_hat):
+        return (label_hat - label) ** 2
+    
+    def partial_mse( label, label_hat):
+        return 2*(label_hat - label)
+    
+    names = {'binary_crossentropy': binary_crossentropy, 'categorical_crossentropy': categorical_crossentropy, 'mse': mse}
+    partial_names = {'binary_crossentropy': partial_binary_crossentropy,
+                    'categorical_crossentropy': partial_categorical_crossentropy,
+                    'mse': partial_mse}
+    
+class Activation_Funcs:
+    def relu( x):
+        return (x>0).astype(int) * x
+    
+    def partial_relu( x):
+        return (x>0).astype(int)
+    
+    def sigmoid( x):
+        a = (x>SIGMOID_THRESHOLD).astype(int)
+        x = x*(1-a) + a*SIGMOID_THRESHOLD
+        b = (x<-SIGMOID_THRESHOLD).astype(int)
+        x = x*(1-b) - b*SIGMOID_THRESHOLD
+        return 1/(1 + math.e**(-x))
+    
+    def partial_sigmoid( x):
+        a = (x>SIGMOID_THRESHOLD).astype(int)
+        x = x*(1-a) + a*SIGMOID_THRESHOLD
+        b = (x<-SIGMOID_THRESHOLD).astype(int)
+        x = x*(1-b) - b*SIGMOID_THRESHOLD
+        temp = math.e**(-x)
+        result =  temp/(1+temp)**2
+        return result
+        
+    def softmax(x):
+        n = np.shape(x)[0]
+        m = np.shape(x)[1]
+        print(x)
+        min_value = np.min(x)
+        x = x + min_value
+        max_value = np.max(x)
+        rescale = (SOFTMAX_THRESHOLD_LARGE - SOFTMAX_THRESHOLD_SMALL)/ (max_value - SOFTMAX_THRESHOLD_SMALL)
+        #将大于large threshold的值，rescale到small和large之间。
+        for i in range(n):
+            for j in range(m):
+                if x[i][j] > SOFTMAX_THRESHOLD_LARGE:
+                    x[i][j] = SOFTMAX_THRESHOLD_SMALL + rescale*(x[i][j] - SOFTMAX_THRESHOLD_SMALL)
+
+        x = math.e**(x)
+        result = np.zeros((n,m))
+        for i in range(n):
+            temp = np.sum(x[i])
+            result[i] = x[i]/temp
+        print('softmax:', x, result)
+        return result
+    
+    def partial_softmax(x):
+        n = np.shape(x)[0]
+        m = np.shape(x)[1]
+        min_value = np.min(x)
+        x = x + min_value
+        max_value = np.max(x)
+        rescale = (SOFTMAX_THRESHOLD_LARGE - SOFTMAX_THRESHOLD_SMALL)/ (max_value - SOFTMAX_THRESHOLD_SMALL)
+        #将大于large threshold的值，rescale到small和large之间。
+        for i in range(n):
+            for j in range(m):
+                if x[i][j] > SOFTMAX_THRESHOLD_LARGE:
+                    x[i][j] = SOFTMAX_THRESHOLD_SMALL + rescale*(x[i][j] - SOFTMAX_THRESHOLD_SMALL)
+
+        x = math.e**(x)
+        result = np.zeros((n,m))
+        for i in range(n):
+            temp = np.sum(x[i])
+            result[i] =x[i]/temp- x[i]**2/temp**2 
+        return result
+
+        
+    def linear( x):
+        return x
+    
+    def partial_linear(x):
+        return np.ones(np.shape(x))
+    
+    names = {'relu': relu, 'sigmoid':sigmoid, 'linear': linear, 'softmax': softmax}
+    partial_names = {'relu': partial_relu, 'sigmoid': partial_sigmoid, 'linear': partial_linear, 'softmax': partial_softmax}
+    
+class Node:
+    def __init__(self, inbound_layer, size):
+        self.inbound_layer = inbound_layer
+        self.outbound_layer = None
+        self.size = size
+        self.value = None
+        self.partial_value = None
+
+class Dense:
+    def __init__(self, *,
+                input_dim = 64,
+                output_dim = 64,
+                use_bias = True,
+                init_type='norm'):
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.weights = np.random.normal(0, 1, size = (input_dim, output_dim))
+        if use_bias:
+            self.bias = np.random.normal(0,1, size = (output_dim))
+        self.outbound_node = Node(self, output_dim)
+        
+    def forward(self, x):
+        self.inbound_value = x
+        return np.dot(x, self.weights) + self.bias
+    
+    def backward(self, partial):
+        return np.dot(partial, self.weights.T)
+    
+    def upgrade(self, partial, learning_rate):
+        self.partial_weights = np.dot(self.inbound_value.T, partial)
+        self.partial_bias = np.sum(partial, axis=(0,))
+        self.weights -= learning_rate * self.partial_weights
+        self.bias -= learning_rate * self.partial_bias
+        
+class Activation:
+    def __init__(self, *,
+                name = 'relu',
+                dim = 64):
+        self.dim = dim
+        self.outbound_node = Node(self, dim)
+        self.func = Activation_Funcs.names[name]
+        self.partial_func = Activation_Funcs.partial_names[name]
+        
+    def forward(self, x):
+        self.inbound_value = x
+        return self.func(x)
+    
+    def backward(self, partial):
+        return self.partial_func(self.inbound_value) * partial #这里不是矩阵乘法，是对应元素相乘
+    
+    def upgrade(self, partial, learning_rate):
+        pass#暂不考虑可训练的激活层。
+    
+class Sequential:
+    def __init__(self, *, input_dim):
+        self.input_dim = input_dim
+        self.layers = []
+        self.nodes = [Node(None,input_dim)]
+        
+    def add(self, newLayer):
+        self.nodes[-1].outbound_layer = newLayer
+        self.layers.append(newLayer)
+        newLayer.inbound_node = self.nodes[-1] #此时冗余
+        self.nodes.append(newLayer.outbound_node)
+        
+    def forward_prop(self, x_batch, batch_size):
+        n = len(self.layers)
+        self.nodes[0].value = x_batch
+        for i in range(n):
+            self.nodes[i+1].value = self.layers[i].forward(self.nodes[i].value)
+            
+    def backward_prop(self, y_batch, batch_size, learning_rate):
+        loss_func = Losses.names[self.loss]
+        partial_loss_func = Losses.partial_names[self.loss]
+        n = len(self.layers)
+        loss = loss_func(y_batch, self.nodes[n].value)
+        partial_loss = partial_loss_func(y_batch, self.nodes[n].value)
+        self.nodes[n].partial_value = partial_loss
+        for i in range(n-1,-1, -1):
+            self.nodes[i].partial_value = self.layers[i].backward(self.nodes[i+1].partial_value)
+            self.layers[i].upgrade(self.nodes[i+1].partial_value, learning_rate)
+        return loss
+    
+    def prop_test(self):
+        #这个方法用来对前向和反向传播计算的准确性进行直接测试。
+        pass
+    
+    def fit(self, *, loss = 'binary_crossentropy',
+            x_train,
+            y_train,
+            batch_size = 32,
+            epochs = 1000,
+            learning_rate_init = 1,
+            learning_rate_low = 0.1,
+            decay = 0.999999
+            
+            ):
+        self.loss = loss
+        length = np.shape(y_train)[0]
+        index = np.array(range(length))
+        x_train = x_train[index]
+        y_train = y_train[index]
+        learning_rate = learning_rate_init
+        start_index = 0
+        for i in range(epochs):
+            end_index = start_index + batch_size
+            x_batch = x_train[start_index:end_index]
+            y_batch = y_train[start_index:end_index]
+            if end_index>= length:
+                end_index -= length
+                x_batch = np.concatenate([x_batch, x_train[0: end_index]])
+                y_batch = np.concatenate([y_batch, y_train[0: end_index]])
+            start_index = end_index
+            self.forward_prop(x_batch, batch_size)
+            if learning_rate > learning_rate_low:
+                learning_rate *= decay            
+            loss = self.backward_prop(y_batch, batch_size, learning_rate)
+            if i % 20 == 0:
+                print(i,'  current loss: ', loss/batch_size)
+                
+                
+    def predict(self,x):
+        self.forward_prop(x, 1)
+        return self.nodes[-1].value
+    
+    def evaluate(self, x_batch, y_batch):
+        batch_size = np.shape(y_batch)[0]
+        self.forward_prop(x_batch, batch_size)
+        loss = Activation_Funcs.names[self.loss](y_batch, self.nodes[-1].value)
+        print('loss: ', loss/batch_size)
+            
+x_train =  np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
+#y_label = np.array([[0],[1],[1],[0]])#注意这里，对于数据的格式还是不够宽容。
+y_label = np.array([0,1,1,0])
+
+
+model = Sequential(input_dim = 2)
+model.add(Dense(input_dim = 2, output_dim = 128))
+model.add(Activation(name='relu', dim =128))
+model.add(Dense(input_dim = 128, output_dim = 1))
+model.add(Activation(name='sigmoid', dim = 1))
+model.fit(loss = 'binary_crossentropy', 
+         x_train = x_train,
+         y_train = y_label,
+         batch_size = 1,
+         epochs = 200)
+
+
+for i in x_train:
+    print(model.predict(i))
+
+
+'''
+    def binary_crossentropy( label, label_hat):
+        while len(np.shape(label_hat)) > 1:
+            label_hat = label_hat[0]
+        result = 0
+        #print('label', label, label_hat)
+        for i in range(len(label)):
+            if label[i] == 1:
+                if label_hat[i] < UP_ZERO:
+                    label_hat[i] = UP_ZERO
+                result -= math.log(label_hat[i])
+            else:
+                if label_hat[i] > 1 - UP_ZERO:
+                    label_hat[i] = 1 - UP_ZERO
+                result -= math.log(1-label_hat[i])
+            #print('result:', i, result)
+        return result
+
+    def partial_binary_crossentropy( label, label_hat):
+        while len(np.shape(label_hat)) > 1:
+            label_hat = label_hat[0]
+        result = 0
+        for i in range(len(label)):
+            if label[i] == 1:
+                if label_hat[i] < UP_ZERO:
+                    label_hat[i] = UP_ZERO
+                result -= 1/label_hat[i]
+            else:
+                if label_hat[i] > 1-UP_ZERO:
+                    label_hat[i] = 1-UP_ZERO
+                result += 1/(1-label_hat[i])
+        return result'''
